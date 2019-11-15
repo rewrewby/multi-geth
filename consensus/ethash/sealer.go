@@ -257,7 +257,7 @@ func (ethash *Ethash) remote(notify []string, noverify bool) {
 		currentWork[7] = hexutil.EncodeUint64(uint64(len(block.Transactions())))
 		currentWork[8] = hexutil.EncodeUint64(uint64(len(block.Uncles())))
 
-		header.Extra = append(header.Extra, make([]byte, 4)...)
+		extra := append(header.Extra, make([]byte, 4)...)
 		encoded, err := rlp.EncodeToBytes([]interface{}{
 			header.ParentHash,
 			header.UncleHash,
@@ -271,7 +271,7 @@ func (ethash *Ethash) remote(notify []string, noverify bool) {
 			header.GasLimit,
 			header.GasUsed,
 			header.Time,
-			header.Extra,
+			extra,
 		})
 		if err == nil {
 			currentWork[9] = hexutil.Encode(encoded)
@@ -283,7 +283,7 @@ func (ethash *Ethash) remote(notify []string, noverify bool) {
 	}
 	// submitWork verifies the submitted pow solution, returning
 	// its block hash when success or an error when failed.
-	submitWork := func(nonce types.BlockNonce, mixDigest common.Hash, sealhash common.Hash, extraNonce *uint32) (blockHash common.Hash, err error) {
+	submitWork := func(nonce types.BlockNonce, mixDigest common.Hash, sealhash common.Hash, extraNonce []byte) (blockHash common.Hash, err error) {
 		if currentBlock == nil {
 			err = errors.New("Pending work without block")
 			log.Error(err.Error(), "sealhash", sealhash)
@@ -300,11 +300,7 @@ func (ethash *Ethash) remote(notify []string, noverify bool) {
 		header := block.Header()
 		header.Nonce = nonce
 		header.MixDigest = mixDigest
-		if extraNonce != nil {
-			buf := make([]byte, 4)
-			binary.BigEndian.PutUint32(buf, *extraNonce)
-			header.Extra = append(header.Extra, buf...)
-		}
+		header.Extra = append(header.Extra, extraNonce...)
 
 		start := time.Now()
 		if !noverify {

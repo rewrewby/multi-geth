@@ -416,7 +416,7 @@ type mineResult struct {
 	nonce      types.BlockNonce
 	mixDigest  common.Hash
 	hash       common.Hash
-	extraNonce *uint32
+	extraNonce []byte
 
 	blockHashCh chan common.Hash
 	errorCh     chan error
