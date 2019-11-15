@@ -46,7 +46,7 @@ type Error interface {
 type ErrorWithInfo interface {
 	Error() string          // returns the message
 	ErrorCode() int         // returns the code
-	ErrorInfo() interface{} // returns the extra information
+	ErrorInfo() string      // returns the extra information
 }
 
 // ServerCodec implements reading, parsing and writing RPC messages for the server side of
