@@ -19,6 +19,7 @@ package ethash
 import (
 	"bytes"
 	crand "crypto/rand"
+	"encoding/binary"
 	"encoding/json"
 	"errors"
 	"math"
@@ -34,6 +35,7 @@ import (
 	"github.com/ethereum/go-ethereum/consensus"
 	"github.com/ethereum/go-ethereum/core/types"
 	"github.com/ethereum/go-ethereum/log"
+	"github.com/ethereum/go-ethereum/rlp"
 )
 
 const (
@@ -48,13 +50,13 @@ var (
 
 // Seal implements consensus.Engine, attempting to find a nonce that satisfies
 // the block's difficulty requirements.
-func (ethash *Ethash) Seal(chain consensus.ChainReader, block *types.Block, results chan<- *types.Block, stop <-chan struct{}) error {
+func (ethash *Ethash) Seal(chain consensus.ChainReader, block *types.Block, results chan<- types.SealResult, stop <-chan struct{}) error {
 	// If we're running a fake PoW, simply return a 0 nonce immediately
 	if ethash.config.PowMode == ModeFake || ethash.config.PowMode == ModeFullFake {
 		header := block.Header()
 		header.Nonce, header.MixDigest = types.BlockNonce{}, common.Hash{}
 		select {
-		case results <- block.WithSeal(header):
+		case results <- types.SealResult{Block: block.WithSeal(header)}:
 		default:
 			log.Warn("Sealing result is not read by miner", "mode", "fake", "sealhash", ethash.SealHash(block.Header()))
 		}
@@ -109,7 +111,7 @@ func (ethash *Ethash) Seal(chain consensus.ChainReader, block *types.Block, resu
 		case result = <-locals:
 			// One of the threads found a block, abort all others
 			select {
-			case results <- result:
+			case results <- types.SealResult{Block: result}:
 			default:
 				log.Warn("Sealing result is not read by miner", "mode", "local", "sealhash", ethash.SealHash(block.Header()))
 			}
@@ -192,9 +194,9 @@ func (ethash *Ethash) remote(notify []string, noverify bool) {
 		works = make(map[common.Hash]*types.Block)
 		rates = make(map[common.Hash]hashrate)
 
-		results      chan<- *types.Block
+		results      chan<- types.SealResult
 		currentBlock *types.Block
-		currentWork  [9]string
+		currentWork  [10]string
 
 		notifyTransport = &http.Transport{}
 		notifyClient    = &http.Client{
@@ -242,7 +244,8 @@ func (ethash *Ethash) remote(notify []string, noverify bool) {
 	//   result[7], hex encoded transaction count
 	//   result[8], hex encoded uncle count
 	makeWork := func(block *types.Block) {
-		hash := ethash.SealHash(block.Header())
+		header := block.Header()
+		hash := ethash.SealHash(header)
 
 		currentWork[0] = hash.Hex()
 		currentWork[1] = common.BytesToHash(SeedHash(block.NumberU64())).Hex()
@@ -254,13 +257,33 @@ func (ethash *Ethash) remote(notify []string, noverify bool) {
 		currentWork[7] = hexutil.EncodeUint64(uint64(len(block.Transactions())))
 		currentWork[8] = hexutil.EncodeUint64(uint64(len(block.Uncles())))
 
+		header.Extra = append(header.Extra, make([]byte, 4)...)
+		encoded, err := rlp.EncodeToBytes([]interface{}{
+			header.ParentHash,
+			header.UncleHash,
+			header.Coinbase,
+			header.Root,
+			header.TxHash,
+			header.ReceiptHash,
+			header.Bloom,
+			header.Difficulty,
+			header.Number,
+			header.GasLimit,
+			header.GasUsed,
+			header.Time,
+			header.Extra,
+		})
+		if err == nil {
+			currentWork[9] = hexutil.Encode(encoded)
+		}
+
 		// Trace the seal work fetched by remote sealer.
 		currentBlock = block
 		works[hash] = block
 	}
 	// submitWork verifies the submitted pow solution, returning
 	// its block hash when success or an error when failed.
-	submitWork := func(nonce types.BlockNonce, mixDigest common.Hash, sealhash common.Hash) (blockHash common.Hash, err error) {
+	submitWork := func(nonce types.BlockNonce, mixDigest common.Hash, sealhash common.Hash, extraNonce *uint32) (blockHash common.Hash, err error) {
 		if currentBlock == nil {
 			err = errors.New("Pending work without block")
 			log.Error(err.Error(), "sealhash", sealhash)
@@ -277,6 +300,11 @@ func (ethash *Ethash) remote(notify []string, noverify bool) {
 		header := block.Header()
 		header.Nonce = nonce
 		header.MixDigest = mixDigest
+		if extraNonce != nil {
+			buf := make([]byte, 4)
+			binary.BigEndian.PutUint32(buf, *extraNonce)
+			header.Extra = append(header.Extra, buf...)
+		}
 
 		start := time.Now()
 		if !noverify {
@@ -296,11 +324,15 @@ func (ethash *Ethash) remote(notify []string, noverify bool) {
 
 		// Solutions seems to be valid, return to the miner and notify acceptance.
 		solution := block.WithSeal(header)
+		result := types.SealResult{
+			Block:    solution,
+			SealHash: &sealhash,
+		}
 
 		// The submitted solution is within the scope of acceptance.
 		if solution.NumberU64()+staleThreshold > currentBlock.NumberU64() {
 			select {
-			case results <- solution:
+			case results <- result:
 				blockHash = solution.Hash()
 				log.Debug("Work submitted is acceptable", "number", solution.NumberU64(), "sealhash", sealhash, "hash", blockHash)
 				return
@@ -341,7 +373,7 @@ func (ethash *Ethash) remote(notify []string, noverify bool) {
 
 		case result := <-ethash.submitWorkCh:
 			// Verify submitted PoW solution based on maintained mining blocks.
-			blockHash, err := submitWork(result.nonce, result.mixDigest, result.hash)
+			blockHash, err := submitWork(result.nonce, result.mixDigest, result.hash, result.extraNonce)
 			if err == nil {
 				result.blockHashCh <- blockHash
 			} else {
