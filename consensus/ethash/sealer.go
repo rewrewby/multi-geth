@@ -194,7 +194,7 @@ func (ethash *Ethash) remote(notify []string, noverify bool) {
 
 		results      chan<- *types.Block
 		currentBlock *types.Block
-		currentWork  [4]string
+		currentWork  [9]string
 
 		notifyTransport = &http.Transport{}
 		notifyClient    = &http.Client{
@@ -236,6 +236,11 @@ func (ethash *Ethash) remote(notify []string, noverify bool) {
 	//   result[1], 32 bytes hex encoded seed hash used for DAG
 	//   result[2], 32 bytes hex encoded boundary condition ("target"), 2^256/difficulty
 	//   result[3], hex encoded block number
+	//   result[4], 32 bytes hex encoded parent block header pow-hash
+	//   result[5], hex encoded gas limit
+	//   result[6], hex encoded gas used
+	//   result[7], hex encoded transaction count
+	//   result[8], hex encoded uncle count
 	makeWork := func(block *types.Block) {
 		hash := ethash.SealHash(block.Header())
 
@@ -243,6 +248,11 @@ func (ethash *Ethash) remote(notify []string, noverify bool) {
 		currentWork[1] = common.BytesToHash(SeedHash(block.NumberU64())).Hex()
 		currentWork[2] = common.BytesToHash(new(big.Int).Div(two256, block.Difficulty()).Bytes()).Hex()
 		currentWork[3] = hexutil.EncodeBig(block.Number())
+		currentWork[4] = block.ParentHash().Hex()
+		currentWork[5] = hexutil.EncodeUint64(block.GasLimit())
+		currentWork[6] = hexutil.EncodeUint64(block.GasUsed())
+		currentWork[7] = hexutil.EncodeUint64(uint64(len(block.Transactions())))
+		currentWork[8] = hexutil.EncodeUint64(uint64(len(block.Uncles())))
 
 		// Trace the seal work fetched by remote sealer.
 		currentBlock = block
