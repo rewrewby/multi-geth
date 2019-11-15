@@ -417,7 +417,8 @@ type mineResult struct {
 	mixDigest common.Hash
 	hash      common.Hash
 
-	errc chan error
+	blockHashCh chan common.Hash
+	errorCh     chan error
 }
 
 // hashrate wraps the hash rate submitted by the remote sealer.
@@ -703,6 +704,12 @@ func (ethash *Ethash) APIs(chain consensus.ChainReader) []rpc.API {
 		},
 		{
 			Namespace: "ethash",
+			Version:   "1.0",
+			Service:   &API{ethash},
+			Public:    true,
+		},
+		{
+			Namespace: "parity",
 			Version:   "1.0",
 			Service:   &API{ethash},
 			Public:    true,
