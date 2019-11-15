@@ -71,7 +71,7 @@ func (api *API) SubmitWork(nonce types.BlockNonce, hash, digest common.Hash) boo
 		return false
 	}
 
-	var errc = make(chan error, 1)
+	var errorCh = make(chan error, 1)
 	var blockHashCh = make(chan common.Hash, 1)
 
 	select {
