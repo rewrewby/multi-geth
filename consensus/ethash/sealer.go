@@ -19,7 +19,6 @@ package ethash
 import (
 	"bytes"
 	crand "crypto/rand"
-	"encoding/binary"
 	"encoding/json"
 	"errors"
 	"math"

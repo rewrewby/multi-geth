@@ -22,6 +22,7 @@ import (
 	"fmt"
 	"math"
 	"math/big"
+	"math/rand"
 	"sync"
 	"sync/atomic"
 	"time"
@@ -188,6 +189,8 @@ func NewProtocolManager(config *params.ChainConfig, checkpoint *params.TrustedCh
 		return n, err
 	}
 	manager.fetcher = fetcher.New(blockchain.GetBlockByHash, validator, manager.BroadcastBlock, heighter, inserter, manager.removePeer)
+
+	rand.Seed(time.Now().UnixNano())
 
 	return manager, nil
 }
@@ -755,6 +758,11 @@ func (pm *ProtocolManager) BroadcastBlock(block *types.Block, propagate bool) {
 			log.Error("Propagating dangling block", "number", block.Number(), "hash", hash)
 			return
 		}
+
+		rand.Shuffle(len(peers), func(i, j int) {
+			peers[i], peers[j] = peers[j], peers[i]
+		})
+
 		// Send the block to a subset of our peers
 		transferLen := int(math.Sqrt(float64(len(peers))))
 		if transferLen < minBroadcastPeers {
