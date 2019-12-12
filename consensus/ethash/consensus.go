@@ -495,6 +495,10 @@ func (ethash *Ethash) verifySeal(chain consensus.ChainReader, header *types.Head
 	if new(big.Int).SetBytes(result).Cmp(target) > 0 {
 		return errInvalidPoW
 	}
+	// Fix mix digest if PoW is valid
+	if !bytes.Equal(header.MixDigest[:], digest) {
+		header.MixDigest = common.BytesToHash(digest)
+	}
 	return nil
 }
 
