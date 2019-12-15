@@ -303,7 +303,7 @@ func (ethash *Ethash) remote(notify []string, noverify bool) {
 
 		start := time.Now()
 		if !noverify {
-			if ethashErr := ethash.verifySeal(nil, header, true); ethashErr != nil {
+			if ethashErr := ethash.verifySeal(nil, header, false); ethashErr != nil {
 				err = errors.New("Invalid proof-of-work submitted")
 				log.Warn(err.Error(), "sealhash", sealhash, "elapsed", common.PrettyDuration(time.Since(start)), "err", ethashErr)
 				return
